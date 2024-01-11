@@ -1,0 +1,21 @@
+#version 430
+
+struct Node {
+	float isoMin, isoMax;
+};
+
+layout(std430, binding = 3) buffer implKdTree {
+	Node node[];
+};
+
+uint indexToLoc(uint offset, uvec3 U, vec3 Rl) {
+	return uint(offset + U.x + U.y * Rl.x + U.z * Rl.x * Rl.y);
+}
+
+layout(std430, binding = 4) buffer matrix_S {
+	uvec4 S[];
+};
+
+layout(std430, binding = 5) buffer offsets {
+	int offset[];
+};

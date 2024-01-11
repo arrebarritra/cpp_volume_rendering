@@ -1,0 +1,186 @@
+#version 430
+
+layout (binding = 1) uniform sampler3D TexVolume;
+
+uniform vec3 VolumeGridResolution;
+uniform vec3 VolumeVoxelSize;
+uniform vec3 VolumeGridSize;
+
+uniform vec3 CameraEye;
+
+uniform mat4 u_CameraLookAt;
+uniform mat4 ProjectionMatrix;
+
+uniform float u_TanCameraFovY;
+uniform float u_CameraAspectRatio;
+
+uniform float Isovalue;
+uniform float StepSize = 0.5;
+uniform vec4 Color;
+
+uniform vec3 VolumeScales;
+
+uniform vec3 WorldEyePos;
+
+// kd tree info
+uniform int k;
+uniform vec3 R;
+uniform vec3 V;
+uniform vec3 virtualratio;
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout (rgba16f, binding = 0) uniform image2D OutputFrag;
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// From structured/rtisoikd/kd_tree.comp
+struct Node { float isoMin, isoMax; };
+layout(std430, binding = 3) buffer implKdTree {	Node node[]; };
+layout(std430, binding = 4) buffer matrix_S { uvec4 S[]; };
+layout(std430, binding = 5) buffer offsets { int offset[]; };
+uint indexToLoc(uint offset, uvec3 U, vec3 Rl);
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// From structured/_common_shaders/ray_bbox_intersection.comp
+struct Ray { vec3 Origin; vec3 Dir; };
+bool IntersectBox (Ray r, vec3 boxmin, vec3 boxmax, out float rtnear, out float rtfar);
+bool RayAABBIntersection (vec3 vert_eye, vec3 vert_dir, vec3 vol_scaled_dim,
+                          out Ray r, out float rtnear, out float rtfar);
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool InterpolateIsovalue(Ray r, float rtnear, float rtfar, float iso) {
+  vec3 tex_pos_near = (r.Origin + r.Dir * rtnear + VolumeGridSize * 0.5) / VolumeGridSize;
+  vec3 tex_pos_far = (r.Origin + r.Dir * rtfar + VolumeGridSize * 0.5) / VolumeGridSize;
+
+  float val_near = texture(TexVolume, tex_pos_near).r;
+  float val_far = texture(TexVolume, tex_pos_far).r;
+  return step(val_near, iso) != step(val_far, iso) || val_near == iso || val_far == iso;
+}
+
+void UpdateSearchInterval(Ray r, uvec3 index, uvec3 Rl, out float rtnear, out float rtfar) {
+  vec3 nodesize = VolumeGridSize / vec3(Rl);
+  vec3 boxmin = -VolumeGridSize * 0.5 + vec3(index) * nodesize;
+  vec3 boxmax = boxmin + nodesize;
+  IntersectBox(r, boxmin, boxmax, rtnear, rtfar);
+}
+
+void main ()
+{
+  ivec2 storePos = ivec2(gl_GlobalInvocationID.xy);
+
+  ivec2 size = imageSize(OutputFrag);
+  if (storePos.x < size.x && storePos.y < size.y)
+  {
+    // Get screen position [x, y] and consider centering the pixel by + 0.5
+    vec2 fpos = vec2(storePos) + 0.5;
+
+    // Transform fpos from [w, h] to [0, 1] to [-1, 1]
+    vec3 VerPos = (vec3(fpos.x / float(size.x), fpos.y / float(size.y), 0.0) * 2.0) - 1.0;
+
+    // Camera direction
+    vec3 camera_dir = normalize(vec3(VerPos.x * u_TanCameraFovY * u_CameraAspectRatio, VerPos.y * u_TanCameraFovY, -1.0) * mat3(u_CameraLookAt));
+
+    // Find Ray Intersection
+    Ray r; float tnear, tfar;
+    bool inbox = RayAABBIntersection(CameraEye, camera_dir, VolumeGridSize, r, tnear, tfar);
+
+    // If inside volume grid
+    if(inbox)
+    {
+      // Initialize Transparency and Radiance color
+      vec4 dst = vec4(0.0);
+
+      // World position at tnear, translated to the volume [0, VolumeGridSize]
+      vec3 wld_pos = r.Origin + r.Dir * tnear;
+      // Texture position
+      vec3 tex_pos = wld_pos + (VolumeGridSize * 0.5);
+
+      // traversal variables
+      uvec3 curr_index = uvec3(0, 0, 0);
+      uvec3 curr_R = uvec3(1, 1, 1);
+      uvec3 curr_V = uvec3(1, 1, 1);
+      uint curr_loc = 0;
+      uint level = 0;
+      uint DepthFlags = 0;
+      float t_d;
+      
+      // traverse kd tree
+      while (true) {
+        // determine whether to continue on branch, return to parent or end traversal
+        bool return_to_parent = true;
+        if (Isovalue >= node[curr_loc].isoMin && Isovalue <= node[curr_loc].isoMax) {
+          if (level == k - 1) {
+            // check if isovalue is contained in voxel
+            UpdateSearchInterval(r, curr_index, curr_R, tnear, tfar);
+            if (InterpolateIsovalue(r, tnear, tfar, Isovalue)) {
+                dst = Color;
+                break;
+            }
+          } else {
+            // continue on branch if it potentially contains isovalue
+            return_to_parent = false;
+          }
+        }
+        
+        if (return_to_parent) {
+          // attempt to return to parent
+          if (DepthFlags > 0u){
+            // return to parent using depth flag
+            uint returnDepth = findMSB(DepthFlags);
+            uvec3 N = (S[level] - S[returnDepth]).xyz;
+            curr_index >>= N;
+            curr_V >>= N;
+            curr_R = uvec3(virtualratio * curr_V);
+            level = returnDepth;
+          } else {
+            break;
+          }
+        }
+
+        // determine split plane
+        int a = int(dot((S[level + 1] - S[level]).xyz, uvec3(0, 1, 2)));
+        uint NearFirst = uint(r.Dir[a] > 0);
+
+        if (!return_to_parent)
+          UpdateSearchInterval(r, curr_index, curr_R, tnear, tfar);
+
+        // find intersection parameter t_d
+        float split_coord = ((curr_index[a] * 2.0 + 1.0) / ceil(curr_V[a] * 2.0 * virtualratio[a]) - 0.5) * VolumeGridSize[a];
+        if(r.Dir[a] != 0) {
+          float invR = 1.0 / r.Dir[a];
+          t_d = invR * (split_coord - r.Origin[a]);
+        } else {
+          // if ray is parallel to plane, determine which side of plane it is on
+          t_d = r.Origin[a] > split_coord ? tnear : tfar;
+        }
+
+        // traverse near, far or both nodes
+        // determine index of next node to traverse
+        curr_index[a] *= 2;
+        if (((DepthFlags >> level) & 1u) == 1u) {
+            // depth flag is set -> reset flag
+            DepthFlags &= ~(1u << level);
+            curr_index[a] += NearFirst;
+            // clip ray to far box bounds
+            tnear = t_d;
+        } else if (t_d <= tnear) {
+          curr_index[a] += NearFirst;
+        } else if (t_d >= tfar) {
+          curr_index[a] += 1 - NearFirst;
+        } else {
+          // depth flag is not set -> set flag
+          DepthFlags |= 1u << level;
+          curr_index[a] += 1 - NearFirst;
+          // clip ray to near box bounds
+          tfar = t_d;
+        }
+
+        // calculate parameters for node in next level
+        curr_V[a] *= 2;
+        curr_R = uvec3(ceil(virtualratio * curr_V));
+        curr_loc = indexToLoc(offset[++level], curr_index, curr_R);
+      }
+      imageStore(OutputFrag, storePos, dst);
+    }
+  }
+}

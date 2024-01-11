@@ -26,6 +26,12 @@ namespace gl
     gl::ExitOnGLError("ERROR: Could not bind the Buffer Object");
   }
 
+  void BufferObject::BindBase(GLuint index)
+  {
+      glBindBufferBase(m_target, index, m_id);
+      gl::ExitOnGLError("ERROR: Could not bind the Buffer Object to binding point");
+  }
+
   void BufferObject::Unbind ()
   {
     glBindBuffer(m_target, 0);

@@ -14,14 +14,16 @@ namespace gl
 
     enum TYPES
     {
-      VERTEXBUFFEROBJECT = GL_ARRAY_BUFFER,
-      INDEXBUFFEROBJECT = GL_ELEMENT_ARRAY_BUFFER,
+        VERTEXBUFFEROBJECT = GL_ARRAY_BUFFER,
+        INDEXBUFFEROBJECT = GL_ELEMENT_ARRAY_BUFFER,
+        SHADERSTORAGEBUFFEROBJECT = GL_SHADER_STORAGE_BUFFER
     };
 
     BufferObject (GLenum target);
     ~BufferObject ();
 
-    void Bind ();
+    void Bind();
+    void BindBase(GLuint index);
     void Unbind ();
 
     //VBO: Bind the VBO to a VAO

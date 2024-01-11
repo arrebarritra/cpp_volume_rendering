@@ -50,6 +50,10 @@ add_executable(cppvolrend
                # Voxel Cone Tracing to compute Shadows (Single GPU version)
                structured/rc1pvctsg/preprocessingstages.cpp                    structured/rc1pvctsg/preprocessingstages.h
                structured/rc1pvctsg/vctrenderer.cpp                            structured/rc1pvctsg/vctrenderer.h
+
+               # Isosurface Rayt Tracer using implicit k-d trees
+               structured/rtisoikd/rtisoikdrenderer.cpp                          structured/rtisoikd/rtisoikdrenderer.h
+               structured/rtisoikd/implkdtreegenerator.cpp                       structured/rtisoikd/implkdtreegenerator.h
                
                # Directional Occlusion Shading for GPU Slice/Texture-based 
                structured/sbtmdos/sbtmdosrenderer.cpp                          structured/sbtmdos/sbtmdosrenderer.h

@@ -26,6 +26,8 @@
 #include "structured/rc1pdosct/dosrcrenderer.h"
 #include "structured/rc1pextbsd/ebsrenderer.h"
 #include "structured/rc1pvctsg/vctrenderer.h"
+// Ray tracing - KD tree
+#include "structured/rtisoikd/rtisoikdrenderer.h"
 // Slice based
 #include "structured/sbtmdos/sbtmdosrenderer.h"
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -63,6 +65,9 @@ int main (int argc, char **argv)
   RenderingManager::Instance()->AddVolumeRenderer(new RC1PConeTracingDirOcclusionShading());
   RenderingManager::Instance()->AddVolumeRenderer(new RC1PExtinctionBasedShading());
   RenderingManager::Instance()->AddVolumeRenderer(new RC1PVoxelConeTracingSGPU());
+  //-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+  // Ray tracing - KD tree
+  RenderingManager::Instance()->AddVolumeRenderer(new RaytracingIsoImplKD());
   //-----------------------------------------------------------------------------------------------------------------------------------------------------------------
   // Slice based
   RenderingManager::Instance()->AddVolumeRenderer(new SBTMDirectionalOcclusionShading());

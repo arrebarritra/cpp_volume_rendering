@@ -1,0 +1,77 @@
+#version 430
+
+layout (binding = 1) uniform sampler3D TexVolume; 
+
+uniform vec3 VolumeGridResolution;
+uniform vec3 VolumeVoxelSize;
+
+// k levels
+uniform int k;
+
+// current level l and split axis a
+uniform int l;
+uniform int a;
+
+uniform int Ml;
+
+uniform vec3 Rl;
+uniform vec3 Rlp1;
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+layout (rgba16f, binding = 0) uniform image2D OutputFrag;
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// From structured/rtisoikd/kd_tree.comp
+struct Node { float isoMin, isoMax; };
+layout(std430, binding = 3) buffer implKdTree {	Node node[]; };
+layout(std430, binding = 5) buffer offsets { int offset[]; };
+uint indexToLoc(uint offset, uvec3 U, vec3 Rl);
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+void main ()
+{
+	uvec3 id = gl_GlobalInvocationID;
+	if (any(greaterThanEqual(id, Rl))) return;
+	uint loc = indexToLoc(offset[l], id, Rl);
+
+	if (l == k - 1){
+		// get min and max values in voxel
+		vec3 Rlinv = vec3(1.0) / Rl;
+		float v0 = texture(TexVolume, vec3(id * Rlinv)).r;
+		float v1 = texture(TexVolume, vec3(id + uvec3(1,0,0)) * Rlinv).r;
+		float v2 = texture(TexVolume, vec3(id + uvec3(0,1,0)) * Rlinv).r;
+		float v3 = texture(TexVolume, vec3(id + uvec3(0,0,1)) * Rlinv).r;
+		float v4 = texture(TexVolume, vec3(id + uvec3(1,1,0)) * Rlinv).r;
+		float v5 = texture(TexVolume, vec3(id + uvec3(1,0,1)) * Rlinv).r;
+		float v6 = texture(TexVolume, vec3(id + uvec3(0,1,1)) * Rlinv).r;
+		float v7 = texture(TexVolume, vec3(id + uvec3(1,1,1)) * Rlinv).r;
+
+		node[loc].isoMin = min(min(min(min(min(min(min(v0, v1), v2), v3), v4), v5), v6), v7);
+		node[loc].isoMax = max(max(max(max(max(max(max(v0, v1), v2), v3), v4), v5), v6), v7);
+	} else {
+		// calculate indices of children
+		uvec3 idx_left = id;
+		idx_left[a] *= 2;
+		uvec3 idx_right = idx_left;
+		idx_right[a] += 1;
+
+		// set isomin/max from valid children
+		if (any(greaterThanEqual(idx_left, Rlp1))) {
+			uint locr = indexToLoc(offset[l + 1], idx_right, Rlp1);
+
+			node[loc].isoMin = node[locr].isoMin;
+			node[loc].isoMax = node[locr].isoMax;
+		} else if (any(greaterThanEqual(idx_right, Rlp1))) {
+			uint locl = indexToLoc(offset[l + 1], idx_left, Rlp1);
+
+			node[loc].isoMin = node[locl].isoMin;
+			node[loc].isoMax = node[locl].isoMax;
+		} else {
+			uint locl = indexToLoc(offset[l + 1], idx_left, Rlp1);
+			uint locr = indexToLoc(offset[l + 1], idx_right, Rlp1);
+
+			node[loc].isoMin = min(node[locl].isoMin, node[locr].isoMin);
+			node[loc].isoMax = max(node[locl].isoMax, node[locr].isoMax);
+		}
+	}
+}
