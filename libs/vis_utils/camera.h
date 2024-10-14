@@ -125,7 +125,8 @@ namespace vis
 
     void SetInitialConfig (glm::vec3 _center, glm::vec3 _up);
     
-    void SetSpeedRadius (float spd);
+    void SetSpeedRadius(float spd);
+    void SetRadius (float rad);
   
     glm::mat4 LookAt ();
     glm::mat4 Projection ();

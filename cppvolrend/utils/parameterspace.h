@@ -163,6 +163,69 @@ using ParameterRangeFloat = ParameterRangeNumeric<float>;
 using ParameterRangeDouble = ParameterRangeNumeric<double>;
 using ParameterRangeInt = ParameterRangeNumeric<int>;
 
+class ParameterBool : public ParameterRangeBase {
+
+public:
+    ParameterBool(const std::string& name, bool* param) 
+        :ParameterRangeBase(name)
+        ,m_curr(param)
+        ,m_previousvalue(false)
+        ,end(false)
+    {}
+
+    ///Reset the internal counter to point to the beginning of the parameter range.
+    virtual void Start() override
+    {
+        assert(m_curr);
+        *m_curr = false;
+        end = false;
+    }
+
+    ///Test whether the internal counter reached the end of the parameter range.
+    virtual bool End() const override
+    {
+        assert(m_curr);
+        return end;
+    }
+
+    ///Increase the internal counter by one step.
+    virtual void Incr() override
+    {
+        assert(m_curr);
+        if (*m_curr) end = true;
+        *m_curr = true;
+    }
+
+    ///Store the current value to be restored later with RestoreCurrentValue()
+    virtual void SaveCurrentValue() override
+    {
+        m_previousvalue = *m_curr;
+    }
+
+    ///Restores the current value from the last call to SaveCurrentValue()
+    virtual void RestoreCurrentValue() override
+    {
+        *m_curr = m_previousvalue;
+    }
+
+    ///Returns the number of steps in this range.
+    virtual int NumSteps() const override
+    {
+        return 2;
+    }
+
+    ///Returns the current value as a string
+    virtual std::string GetValueStr() const override
+    {
+        return std::to_string(*m_curr);
+    }
+
+protected:
+    bool* m_curr;
+    bool m_previousvalue;
+    bool end;
+};
+
 
 /** Defines a parameter space for evaluation of an algorithm.
 * 

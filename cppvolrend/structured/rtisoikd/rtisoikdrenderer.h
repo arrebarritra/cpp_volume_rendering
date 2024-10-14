@@ -19,7 +19,7 @@
 class RaytracingIsoImplKD : public BaseVolumeRenderer
 {
 public:
-	RaytracingIsoImplKD();
+    RaytracingIsoImplKD();
   virtual ~RaytracingIsoImplKD();
   
   virtual const char* GetName();
@@ -39,14 +39,20 @@ public:
 
 protected:
   float m_u_isovalue;
-
-  glm::vec4 m_u_color; // RGBA, float
+  float m_u_searchStepSize;
+  int m_u_maxTraversalLevel;
   bool m_apply_gradient_shading;
 
-private:
-	gl::ComputeShader* cp_shader_impl_kd_tree;
-	gl::ComputeShader* cp_shader_rendering;
+  glm::vec4 m_u_color; // RGBA, float
+  
+  //bool m_apply_gradient_shading;
 
-	ImplicitKDTreeGenerator kdg;
+private:
+    gl::ComputeShader* cp_shader_impl_kd_tree;
+    gl::ComputeShader* cp_shader_rendering;
+
+    ImplicitKDTreeGenerator kdg;
+
+    float cam_radius = 600.0f;
 };
 

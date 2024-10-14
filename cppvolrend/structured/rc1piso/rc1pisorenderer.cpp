@@ -138,6 +138,9 @@ bool RayCasting1PassIso::Update(vis::Camera* camera)
 
   /////////////////////////////
   // Camera
+  camera->SetRadius(cam_radius);
+  camera->UpdatePositionAndRotations();
+
   cp_shader_rendering->SetUniform("CameraEye", camera->GetEye());
   cp_shader_rendering->BindUniform("CameraEye");
 
@@ -204,7 +207,10 @@ void RayCasting1PassIso::Redraw()
 void RayCasting1PassIso::FillParameterSpace(ParameterSpace& pspace)
 {
     pspace.ClearParameterDimensions();
-    pspace.AddParameterDimension(new ParameterRangeFloat("StepSize", &m_u_step_size, 0.5f, 2.0f, 0.4f));
+    pspace.AddParameterDimension(new ParameterBool("ApplyGradientShading", &m_apply_gradient_shading));
+    pspace.AddParameterDimension(new ParameterRangeFloat("CamRadius", &cam_radius, 50.0f, 650.0f, 100.0f));
+    pspace.AddParameterDimension(new ParameterRangeFloat("Alpha", &m_u_color.a, 0.1f, 1.01f, 0.1f));
+    pspace.AddParameterDimension(new ParameterRangeFloat("StepSize", &m_u_step_size, 0.2f, 2.01f, 0.2f));
 }
 
 
@@ -225,9 +231,9 @@ void RayCasting1PassIso::SetImGuiComponents()
   }
 
   ImGui::Text("Step size: ");
-  if (ImGui::DragFloat("###RayCasting1PassIsoUIStepSize", &m_u_step_size, 0.01f, 0.05f, 5.0f, "%.2f"))
+  if (ImGui::DragFloat("###RayCasting1PassIsoUIStepSize", &m_u_step_size, 0.001f, 0.05f, 5.0f, "%.3f"))
   {
-      m_u_step_size = std::max(std::min(m_u_step_size, 5.0f), 0.05f); //When entering with keyboard, ImGui does not take care of the min/max.
+      m_u_step_size = std::max(std::min(m_u_step_size, 5.0f), 0.001f); //When entering with keyboard, ImGui does not take care of the min/max.
       SetOutdated();
   }
 
