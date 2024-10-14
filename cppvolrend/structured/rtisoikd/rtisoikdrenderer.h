@@ -53,6 +53,6 @@ private:
 
     ImplicitKDTreeGenerator kdg;
 
-    //float cam_radius = 600.0f;
+    float cam_radius = 600.0f;
 };
 
