@@ -26,6 +26,9 @@ namespace gl
     INT,
     INT_ARRAY,
     
+    // UINT
+    UINT3,
+
     // FLOAT
     FLOAT,
     FLOAT2,
@@ -96,6 +99,9 @@ namespace gl
     void SetUniform (std::string name, int value);
     void SetUniformArray (std::string name, std::vector<int> value);
    
+    // UINT
+    void Shader::SetUniform(std::string name, glm::uvec3 value);
+
     // FLOAT  
     void SetUniform (std::string name, float value);
     void SetUniform (std::string name, glm::vec2 value);

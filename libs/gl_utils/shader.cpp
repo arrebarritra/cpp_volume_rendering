@@ -72,6 +72,14 @@ namespace gl
     delete[] (GLfloat*)v->data;
     v->data = nullptr;
   }
+
+  // . UINT3
+  static void UniformDestroyData_UINT_ARRAY(void* unif_data)
+  {
+      UniformVariable* v = (UniformVariable*)unif_data;
+      delete[](GLuint*)v->data;
+      v->data = nullptr;
+  }
   
   // . FLOAT2
   static void UniformBind_FLOAT2 (void* unif_data)
@@ -87,6 +95,14 @@ namespace gl
     UniformVariable* v = (UniformVariable*)unif_data;
     GLfloat* udata = (GLfloat*)v->data;
     glUniform3f(v->location, udata[0], udata[1], udata[2]);
+  }
+
+  // . UINT3
+  static void UniformBind_UINT3(void* unif_data)
+  {
+      UniformVariable* v = (UniformVariable*)unif_data;
+      GLuint* udata = (GLuint*)v->data;
+      glUniform3ui(v->location, udata[0], udata[1], udata[2]);
   }
   
   // . FLOAT4
@@ -516,6 +532,41 @@ namespace gl
       uniform_variables.insert(std::pair<std::string, UniformVariable>(name, ul));
     }
     gl::ExitOnGLError("Error on SetUniform [GLM FLOAT3]");
+  }
+
+  void Shader::SetUniform(std::string name, glm::uvec3 value)
+  {
+      bool unif_found = (uniform_variables.find(name) != uniform_variables.end());
+
+      // TODO: if "force_override" is false
+
+      // create uniform
+      GLuint* input_uniform = new GLuint[3];
+      input_uniform[0] = (GLuint)value.x;
+      input_uniform[1] = (GLuint)value.y;
+      input_uniform[2] = (GLuint)value.z;
+
+      if (unif_found)
+      {
+          uniform_variables[name].DestroyData();
+          uniform_variables[name].data = input_uniform;
+      }
+      // else, create the new uniform
+      else
+      {
+          UniformVariable ul;
+          ul.type = GLSL_UNIFORM_VARIABLE_TYPES::UINT3;
+          ul.location = glGetUniformLocation(shader_program, name.c_str());
+          ul.data = input_uniform;
+          ul.v_count = -1;
+
+          ul.bind_function = UniformBind_UINT3;
+          ul.destroydata_function = UniformDestroyData_UINT_ARRAY;
+
+          // insert into the uniform map
+          uniform_variables.insert(std::pair<std::string, UniformVariable>(name, ul));
+      }
+      gl::ExitOnGLError("Error on SetUniform [GLM UINT3]");
   }
   
   void Shader::SetUniform (std::string name, glm::vec4 value)

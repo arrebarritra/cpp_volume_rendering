@@ -277,6 +277,13 @@ namespace vis
   {
     speed_radius = spd;
   }
+
+  void Camera::SetRadius(float rad)
+  {
+      radius = rad;
+      glm::vec3 c_e = glm::normalize(glm::vec3(c_data.eye - c_data.center));
+      c_data.eye = c_e * rad;
+  }
   
   glm::mat4 Camera::LookAt ()
   {
