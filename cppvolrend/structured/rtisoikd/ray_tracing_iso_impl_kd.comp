@@ -18,7 +18,7 @@ uniform float u_CameraAspectRatio;
 uniform float Isovalue;
 uniform vec4 Color;
 
-uniform int ApplyGradientPhongShading;
+uniform bool ApplyGradientPhongShading;
 
 uniform float BlinnPhongKa;
 uniform float BlinnPhongKd;
@@ -98,22 +98,22 @@ vec3 ShadeBlinnPhong (vec3 Tpos, vec3 clr)
   return clr;
 }
 
-bool InterpolateIsovalue(Ray r, float tnear, float tfar, out vec3 s_tex_pos) {
-  float D = abs(tfar - tnear);
+bool InterpolateIsovalue(Ray r, inout float tnear, float tfar, out vec3 tex_pos) {    
   vec3 wld_pos = r.Origin + r.Dir * tnear;
-  vec3 tex_pos = wld_pos + VolumeGridSize * 0.5;
+  tex_pos = wld_pos + VolumeGridSize * 0.5;
   vec3 vgs_inv = vec3(1.0) / VolumeGridSize;
 
-  float prevDensity = texture(TexVolume, tex_pos * vgs_inv).r;
-  for (float s = 0; s < D;) {
+  float prevDensity = texture(TexVolume, tex_pos * vgs_inv).r ;
+  while (tnear < tfar) {
     // Get the current step or the remaining interval
-    float h = min(SearchStepSize, D - s);
+    float h = min(SearchStepSize, tfar - tnear);
     
-    // Texture position at tnear + (s + h)
-    s_tex_pos = tex_pos + r.Dir * (s + h);
+    // Texture pos at next search step
+    tnear += h;
+    tex_pos += r.Dir * h;
     
     // Get normalized density from volume
-    float density = texture(TexVolume, s_tex_pos * vgs_inv).r;
+    float density = texture(TexVolume, tex_pos * vgs_inv).r;
     
     // First hit: isosurface
     if ( (prevDensity <= Isovalue && Isovalue <= density)
@@ -121,7 +121,6 @@ bool InterpolateIsovalue(Ray r, float tnear, float tfar, out vec3 s_tex_pos) {
       return true;
     
     prevDensity = density;
-    s += h;
   }
 
   return false;
@@ -170,7 +169,6 @@ void main ()
       int a = 0;
       float t_d;
       const vec3 invR = 1.0 / r.Dir;
-      int checks = 0;
 
       // traverse kd tree
       while (true) {
@@ -178,24 +176,27 @@ void main ()
         bool return_to_parent = true;
         
         if (Isovalue >= node[curr_loc].isoMin && Isovalue <= node[curr_loc].isoMax && curr_index[a] < curr_R[a]) {
-          if (level == MaxTraversalLevel) {
-            checks++;
+          if (level >= MaxTraversalLevel) {
             // check if isovalue is contained in voxel
             vec3 tex_pos;
-            if (InterpolateIsovalue(r, tnear, tfar, tex_pos)) {
+            bool exit = false;
+            while (InterpolateIsovalue(r, tnear, tfar, tex_pos)) {
               vec4 src = Color;
               // Front-to-back composition
               src.rgb = src.rgb * src.a;
 
-              if (ApplyGradientPhongShading == 1) {
+              if (ApplyGradientPhongShading)
                 src.rgb = ShadeBlinnPhong(tex_pos, src.rgb);
-              }
 
               dst = dst + (1.0 - dst.a) * src;
 
-              // Opacity threshold: 99%
-              if (dst.a > 0.99) break;
+              // Exit if at voxel level or opacity threshold is reached
+              if (level == k - 1 || dst.a > 0.99) {
+                if (dst.a > 0.99) exit = true;
+                break;
+              }
             }
+            if (exit) break;
           } else {
             // continue on branch if it potentially contains isovalue
             return_to_parent = false;

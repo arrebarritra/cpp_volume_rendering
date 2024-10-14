@@ -44,6 +44,13 @@ namespace gl
     gl::ExitOnGLError("ERROR: Could not set Buffer Object data");
   }
 
+  void BufferObject::GetBufferData(GLintptr offset, GLsizeiptr size, GLvoid* data)
+  {
+      Bind();
+      glGetBufferSubData(m_target, offset, size, data);
+      gl::ExitOnGLError("ERROR: Could not set Buffer Object data");
+  }
+
   GLuint BufferObject::GetID ()
   {
     return m_id;

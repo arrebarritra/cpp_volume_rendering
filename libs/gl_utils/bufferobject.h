@@ -28,7 +28,8 @@ namespace gl
 
     //VBO: Bind the VBO to a VAO
     //IBO: Bind the IBO to the VAO
-    void SetBufferData (GLsizeiptr size, const GLvoid *data, GLenum usage);
+    void SetBufferData(GLsizeiptr size, const GLvoid* data, GLenum usage);
+    void GetBufferData(GLintptr offset, GLsizeiptr size, GLvoid *data);
 
     GLuint GetID ();
 

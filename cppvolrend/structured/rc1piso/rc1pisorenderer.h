@@ -38,6 +38,6 @@ protected:
 private:
   gl::ComputeShader* cp_shader_rendering;
 
-  float cam_radius = 600.0f;
+  //float cam_radius = 600.0f;
 };
 

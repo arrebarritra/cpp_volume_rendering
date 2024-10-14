@@ -138,8 +138,8 @@ bool RayCasting1PassIso::Update(vis::Camera* camera)
 
   /////////////////////////////
   // Camera
-  camera->SetRadius(cam_radius);
-  camera->UpdatePositionAndRotations();
+  //camera->SetRadius(cam_radius);
+  //camera->UpdatePositionAndRotations();
 
   cp_shader_rendering->SetUniform("CameraEye", camera->GetEye());
   cp_shader_rendering->BindUniform("CameraEye");
