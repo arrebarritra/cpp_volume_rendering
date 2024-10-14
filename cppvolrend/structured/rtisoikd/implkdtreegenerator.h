@@ -20,18 +20,21 @@
 class ImplicitKDTreeGenerator
 {
 public:
-	ImplicitKDTreeGenerator();
-	virtual ~ImplicitKDTreeGenerator();
-	
-	gl::BufferObject* Generate(vis::DataManager* ext_data_manager);
+    ImplicitKDTreeGenerator();
+    virtual ~ImplicitKDTreeGenerator();
+    
+    gl::BufferObject* Generate(vis::DataManager* ext_data_manager);
 
-	int k;
-	glm::vec3 R, V, virtualratio;
+    int k;
+    glm::vec3 R, V, virtualratio;
+    std::vector<unsigned int> offsets;
+    // Debug texture
+    gl::Texture3D* tex;
 
 private:
-	gl::ComputeShader* cp_shader_impl_kd_tree;
+    gl::ComputeShader* cp_shader_impl_kd_tree;
 
-	gl::BufferObject* kdBuffer;
-	gl::BufferObject* matrixSBuffer;
+    gl::BufferObject* kdBuffer;
+    gl::BufferObject* matrixSBuffer;
 };
 

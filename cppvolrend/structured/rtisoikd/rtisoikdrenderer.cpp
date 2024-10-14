@@ -11,11 +11,13 @@
 
 
 RaytracingIsoImplKD::RaytracingIsoImplKD()
-	:cp_shader_rendering(nullptr)
-	, cp_shader_impl_kd_tree(nullptr)
-	, m_u_isovalue(0.5f)
-	, m_u_color(0.66f, 0.6f, 0.05f, 1.0f)
-	, m_apply_gradient_shading(false)
+    :cp_shader_rendering(nullptr)
+    , cp_shader_impl_kd_tree(nullptr)
+    , m_u_isovalue(0.5f)
+    , m_u_color(0.66f, 0.6f, 0.05f, 1.0f)
+    , m_u_searchStepSize(0.5f)
+    , m_u_maxTraversalLevel(0)
+    , m_apply_gradient_shading(false)
 {
 }
 
@@ -27,182 +29,233 @@ RaytracingIsoImplKD::~RaytracingIsoImplKD()
 
 const char* RaytracingIsoImplKD::GetName()
 {
-	return "Isosurface Ray Tracer - Implicit k-d tree";
+    return "Isosurface Ray Tracer - Implicit k-d tree";
 }
 
 
 const char* RaytracingIsoImplKD::GetAbbreviationName()
 {
-	return "rtisoikd";
+    return "rtisoikd";
 }
 
 
 vis::GRID_VOLUME_DATA_TYPE RaytracingIsoImplKD::GetDataTypeSupport()
 {
-	return vis::GRID_VOLUME_DATA_TYPE::STRUCTURED;
+    return vis::GRID_VOLUME_DATA_TYPE::STRUCTURED;
 }
 
 
 void RaytracingIsoImplKD::Clean()
 {
-	if (cp_shader_rendering) delete cp_shader_rendering;
-	cp_shader_rendering = nullptr;
-	kdg.~ImplicitKDTreeGenerator();
+    if (cp_shader_rendering) delete cp_shader_rendering;
+    cp_shader_rendering = nullptr;
+    kdg.~ImplicitKDTreeGenerator();
 
-	gl::ExitOnGLError("Could not destroy shaders");
+    gl::ExitOnGLError("Could not destroy shaders");
 
-	BaseVolumeRenderer::Clean();
+    BaseVolumeRenderer::Clean();
 }
 
 
 bool RaytracingIsoImplKD::Init(int swidth, int sheight)
 {
-	//Clean before we continue
-	if (IsBuilt()) Clean();
+    //Clean before we continue
+    if (IsBuilt()) Clean();
 
-	//We need data to work on
-	if (m_ext_data_manager->GetCurrentVolumeTexture() == nullptr) return false;
+    //We need data to work on
+    if (m_ext_data_manager->GetCurrentVolumeTexture() == nullptr) return false;
 
-	////////////////////////////////////////////
-	// Create Implicit KD Tree on GPU
-	kdg.Generate(m_ext_data_manager);
+    ////////////////////////////////////////////
+    // Create Implicit KD Tree on GPU
+    kdg.Generate(m_ext_data_manager);
+    m_u_maxTraversalLevel = kdg.k - 1;
 
-	////////////////////////////////////////////
-	// Create Rendering Buffers and Shaders
+    ////////////////////////////////////////////
+    // Create Rendering Buffers and Shaders
 
-	// - definition of uniform grid and bounding box
-	glm::vec3 vol_resolution = glm::vec3(m_ext_data_manager->GetCurrentStructuredVolume()->GetWidth(),
-		m_ext_data_manager->GetCurrentStructuredVolume()->GetHeight(),
-		m_ext_data_manager->GetCurrentStructuredVolume()->GetDepth());
+    // - definition of uniform grid and bounding box
+    glm::vec3 vol_resolution = /*glm::vec3(3, 3, 3);*/
+        glm::vec3(m_ext_data_manager->GetCurrentStructuredVolume()->GetWidth(),
+        m_ext_data_manager->GetCurrentStructuredVolume()->GetHeight(),
+        m_ext_data_manager->GetCurrentStructuredVolume()->GetDepth());
 
-	glm::vec3 vol_voxelsize = glm::vec3(m_ext_data_manager->GetCurrentStructuredVolume()->GetScaleX(),
-		m_ext_data_manager->GetCurrentStructuredVolume()->GetScaleY(),
-		m_ext_data_manager->GetCurrentStructuredVolume()->GetScaleZ());
+    glm::vec3 vol_voxelsize = /*glm::vec3(1, 1, 1);*/
+        glm::vec3(m_ext_data_manager->GetCurrentStructuredVolume()->GetScaleX(),
+        m_ext_data_manager->GetCurrentStructuredVolume()->GetScaleY(),
+        m_ext_data_manager->GetCurrentStructuredVolume()->GetScaleZ());
 
-	glm::vec3 vol_aabb = vol_resolution * vol_voxelsize;
+    glm::vec3 vol_aabb = vol_resolution * vol_voxelsize;
 
-	// - load shaders
-	cp_shader_rendering = new gl::ComputeShader();
-	cp_shader_rendering->AddShaderFile(CPPVOLREND_DIR"structured/_common_shaders/ray_bbox_intersection.comp");
-	cp_shader_rendering->AddShaderFile(CPPVOLREND_DIR"structured/rtisoikd/kd_tree.comp");
-	cp_shader_rendering->AddShaderFile(CPPVOLREND_DIR"structured/rtisoikd/ray_tracing_iso_impl_kd.comp");
-	cp_shader_rendering->LoadAndLink();
-	cp_shader_rendering->Bind();
+    // - load shaders
+    cp_shader_rendering = new gl::ComputeShader();
+    cp_shader_rendering->AddShaderFile(CPPVOLREND_DIR"structured/_common_shaders/ray_bbox_intersection.comp");
+    cp_shader_rendering->AddShaderFile(CPPVOLREND_DIR"structured/rtisoikd/kd_tree.comp");
+    cp_shader_rendering->AddShaderFile(CPPVOLREND_DIR"structured/rtisoikd/ray_tracing_iso_impl_kd.comp");
+    cp_shader_rendering->LoadAndLink();
+    cp_shader_rendering->Bind();
 
-	// - data sets to work on: scalar field and its gradient
-	if (m_ext_data_manager->GetCurrentVolumeTexture())
-		cp_shader_rendering->SetUniformTexture3D("TexVolume", m_ext_data_manager->GetCurrentVolumeTexture()->GetTextureID(), 1);
-	if (m_apply_gradient_shading && m_ext_data_manager->GetCurrentGradientTexture())
-		cp_shader_rendering->SetUniformTexture3D("TexVolumeGradient", m_ext_data_manager->GetCurrentGradientTexture()->GetTextureID(), 2);
+    // - data sets to work on: scalar field and its gradient
+    if (m_ext_data_manager->GetCurrentVolumeTexture())
+        cp_shader_rendering->SetUniformTexture3D("TexVolume", m_ext_data_manager->GetCurrentVolumeTexture()->GetTextureID(), 1);
+    //if (m_apply_gradient_shading && m_ext_data_manager->GetCurrentGradientTexture())
+    //	cp_shader_rendering->SetUniformTexture3D("TexVolumeGradient", m_ext_data_manager->GetCurrentGradientTexture()->GetTextureID(), 2);
 
-	// - let the shader know about the uniform grid
-	cp_shader_rendering->SetUniform("VolumeGridResolution", vol_resolution);
-	cp_shader_rendering->SetUniform("VolumeVoxelSize", vol_voxelsize);
-	cp_shader_rendering->SetUniform("VolumeGridSize", vol_aabb);
+    // - let the shader know about the uniform grid
+    cp_shader_rendering->SetUniform("VolumeGridResolution", vol_resolution);
+    cp_shader_rendering->SetUniform("VolumeVoxelSize", vol_voxelsize);
+    cp_shader_rendering->SetUniform("VolumeGridSize", vol_aabb);
 
-	// - pass kd tree info to shader
-	cp_shader_rendering->SetUniform("k", kdg.k);
-	cp_shader_rendering->SetUniform("R", kdg.R);
-	cp_shader_rendering->SetUniform("V", kdg.V);
-	cp_shader_rendering->SetUniform("virtualratio", kdg.virtualratio);
+    // - pass kd tree info to shader
+    cp_shader_rendering->SetUniform("k", kdg.k);
+    cp_shader_rendering->SetUniform("virtualratio", kdg.virtualratio);
 
-	cp_shader_rendering->BindUniforms();
-	cp_shader_rendering->Unbind();
-	gl::ExitOnGLError("RayTracingIsoImplKD: Error on Preparing Rendering Shader");
+    // - pass debug info
+    cp_shader_rendering->SetUniform("SearchStepSize", m_u_searchStepSize);
+    cp_shader_rendering->SetUniform("MaxTraversalLevel", m_u_maxTraversalLevel);
 
-	/////////////////////////////////
-	// Finalization
+    cp_shader_rendering->BindUniforms();
+    cp_shader_rendering->Unbind();
+    gl::ExitOnGLError("RayTracingIsoImplKD: Error on Preparing Rendering Shader");
 
-	//Support for multisampling
-	Reshape(swidth, sheight);
+    /////////////////////////////////
+    // Finalization
 
-	SetBuilt(true);
-	SetOutdated();
-	return true;
+    //Support for multisampling
+    Reshape(swidth, sheight);
+
+    SetBuilt(true);
+    SetOutdated();
+    return true;
 }
 
 
 void RaytracingIsoImplKD::ReloadShaders()
 {
-	cp_shader_rendering->Reload();
-	m_rdr_frame_to_screen.ClearShaders();
+    cp_shader_rendering->Reload();
+    m_rdr_frame_to_screen.ClearShaders();
 }
 
 
 bool RaytracingIsoImplKD::Update(vis::Camera* camera)
 {
-	cp_shader_rendering->Bind();
+    cp_shader_rendering->Bind();
 
-	/////////////////////////////
-	// Multisample
-	if (IsPixelMultiScalingSupported() && GetCurrentMultiScalingMode() > 0)
-	{
-		cp_shader_rendering->RecomputeNumberOfGroups(m_rdr_frame_to_screen.GetWidth(),
-			m_rdr_frame_to_screen.GetHeight(), 0);
-	}
-	else
-	{
-		cp_shader_rendering->RecomputeNumberOfGroups(m_ext_rendering_parameters->GetScreenWidth(),
-			m_ext_rendering_parameters->GetScreenHeight(), 0);
-	}
+    /////////////////////////////
+    // Multisample
+    if (IsPixelMultiScalingSupported() && GetCurrentMultiScalingMode() > 0)
+    {
+        cp_shader_rendering->RecomputeNumberOfGroups(m_rdr_frame_to_screen.GetWidth(),
+            m_rdr_frame_to_screen.GetHeight(), 0);
+    }
+    else
+    {
+        cp_shader_rendering->RecomputeNumberOfGroups(m_ext_rendering_parameters->GetScreenWidth(),
+            m_ext_rendering_parameters->GetScreenHeight(), 0);
+    }
 
-	/////////////////////////////
-	// Camera
-	cp_shader_rendering->SetUniform("CameraEye", camera->GetEye());
-	cp_shader_rendering->SetUniform("u_CameraLookAt", camera->LookAt());
-	cp_shader_rendering->SetUniform("ProjectionMatrix", camera->Projection());
-	cp_shader_rendering->SetUniform("u_TanCameraFovY", (float)tan(DEGREE_TO_RADIANS(camera->GetFovY()) / 2.0));
-	cp_shader_rendering->SetUniform("u_CameraAspectRatio", camera->GetAspectRatio());
-	cp_shader_rendering->SetUniform("WorldEyePos", camera->GetEye());
+    /////////////////////////////
+    // Camera
+    //camera->SetRadius(cam_radius);
+    //camera->UpdatePositionAndRotations();
+    cp_shader_rendering->SetUniform("CameraEye", camera->GetEye());
+    cp_shader_rendering->SetUniform("u_CameraLookAt", camera->LookAt());
+    cp_shader_rendering->SetUniform("ProjectionMatrix", camera->Projection());
+    cp_shader_rendering->SetUniform("u_TanCameraFovY", (float)tan(DEGREE_TO_RADIANS(camera->GetFovY()) / 2.0));
+    cp_shader_rendering->SetUniform("u_CameraAspectRatio", camera->GetAspectRatio());
+    cp_shader_rendering->SetUniform("WorldEyePos", camera->GetEye());
 
-	/////////////////////////////
-	// Isosurface aspects
-	cp_shader_rendering->SetUniform("Isovalue", m_u_isovalue);
-	cp_shader_rendering->SetUniform("Color", m_u_color);
 
-	// Bind all
-	cp_shader_rendering->BindUniforms();
+    /////////////////////////////
+    // Isosurface aspects
+    cp_shader_rendering->SetUniform("Isovalue", m_u_isovalue);
+    cp_shader_rendering->SetUniform("Color", m_u_color);
 
-	gl::Shader::Unbind();
-	gl::ExitOnGLError("RayTracingIsoImplKD: After Update.");
-	return true;
+    cp_shader_rendering->SetUniform("ApplyGradientPhongShading", (m_apply_gradient_shading && m_ext_data_manager->GetCurrentGradientTexture()) ? 1 : 0);
+    cp_shader_rendering->SetUniform("BlinnPhongKa", m_ext_rendering_parameters->GetBlinnPhongKambient());
+    cp_shader_rendering->SetUniform("BlinnPhongKd", m_ext_rendering_parameters->GetBlinnPhongKdiffuse());
+    cp_shader_rendering->SetUniform("BlinnPhongKs", m_ext_rendering_parameters->GetBlinnPhongKspecular());
+    cp_shader_rendering->SetUniform("BlinnPhongShininess", m_ext_rendering_parameters->GetBlinnPhongNshininess());
+    cp_shader_rendering->SetUniform("BlinnPhongIspecular", m_ext_rendering_parameters->GetLightSourceSpecular());
+    cp_shader_rendering->SetUniform("LightSourcePosition", m_ext_rendering_parameters->GetBlinnPhongLightingPosition());
+
+    // Search parameters
+    cp_shader_rendering->SetUniform("SearchStepSize", m_u_searchStepSize);
+    cp_shader_rendering->SetUniform("MaxTraversalLevel", m_u_maxTraversalLevel);
+
+    // Bind all
+    cp_shader_rendering->BindUniforms();
+
+    gl::Shader::Unbind();
+    gl::ExitOnGLError("RayTracingIsoImplKD: After Update.");
+    return true;
 }
 
 
 void RaytracingIsoImplKD::Redraw()
 {
-	m_rdr_frame_to_screen.ClearTexture();
+    m_rdr_frame_to_screen.ClearTexture();
 
-	cp_shader_rendering->Bind();
-	m_rdr_frame_to_screen.BindImageTexture();
+    cp_shader_rendering->Bind();
+    m_rdr_frame_to_screen.BindImageTexture();
 
-	cp_shader_rendering->Dispatch();
-	gl::ComputeShader::Unbind();
+    cp_shader_rendering->Dispatch();
+    gl::ComputeShader::Unbind();
 
-	m_rdr_frame_to_screen.Draw();
+    m_rdr_frame_to_screen.Draw();
 }
 
 void RaytracingIsoImplKD::FillParameterSpace(ParameterSpace& pspace)
 {
-	pspace.ClearParameterDimensions();
+    pspace.ClearParameterDimensions();
+    //pspace.AddParameterDimension(new ParameterRangeFloat("CamRadius", &cam_radius, 50.0f, 650.0f, 100.0f));
 }
 
 
 void RaytracingIsoImplKD::SetImGuiComponents()
 {
-	ImGui::Separator();
+    ImGui::Separator();
 
-	ImGui::Text("Isovalue: ");
-	if (ImGui::DragFloat("###RayTracingIsoImplKDIsovalue", &m_u_isovalue, 0.01f, 0.01f, 100.0f, "%.2f"))
-	{
-		m_u_isovalue = std::max(std::min(m_u_isovalue, 100.0f), 0.01f); //When entering with keyboard, ImGui does not take care of the min/max.
-		SetOutdated();
-	}
+    ImGui::Text("Isovalue: ");
+    if (ImGui::DragFloat("###RayTracingIsoImplKDIsovalue", &m_u_isovalue, 0.01f, 0.01f, 100.0f, "%.2f"))
+    {
+        m_u_isovalue = std::max(std::min(m_u_isovalue, 100.0f), 0.01f); //When entering with keyboard, ImGui does not take care of the min/max.
+        SetOutdated();
+    }
 
-	if (ImGui::ColorEdit4("Color", &m_u_color[0]))
-	{
-		SetOutdated();
-	}
+    if (ImGui::ColorEdit4("Color", &m_u_color[0]))
+    {
+        SetOutdated();
+    }
 
-	//AddImGuiMultiSampleOptions();
+    ImGui::Text("Search step size: ");
+    if (ImGui::DragFloat("###RayTracingIsoImplKDSearchStepSize", &m_u_searchStepSize, 0.01f, 0.01f, 100.0f, "%.2f"))
+    {
+        m_u_isovalue = std::max(std::min(m_u_isovalue, 100.0f), 0.01f); //When entering with keyboard, ImGui does not take care of the min/max.
+        SetOutdated();
+    }
+
+    if (ImGui::SliderInt("Max traversal level", &m_u_maxTraversalLevel, 0, kdg.k - 1)) {
+        SetOutdated();
+    }
+
+    if (m_ext_data_manager->GetCurrentGradientTexture())
+    {
+        ImGui::Separator();
+        if (ImGui::Checkbox("Apply Gradient Shading", &m_apply_gradient_shading))
+        {
+            // Delete current uniform
+            cp_shader_rendering->ClearUniform("TexVolumeGradient");
+
+            if (m_apply_gradient_shading && m_ext_data_manager->GetCurrentGradientTexture())
+            {
+                cp_shader_rendering->Bind();
+                cp_shader_rendering->SetUniformTexture3D("TexVolumeGradient", m_ext_data_manager->GetCurrentGradientTexture()->GetTextureID(), 2);
+                cp_shader_rendering->BindUniform("TexVolumeGradient");
+                gl::ComputeShader::Unbind();
+            }
+            SetOutdated();
+        }
+    }
+
+    //AddImGuiMultiSampleOptions();
 }
